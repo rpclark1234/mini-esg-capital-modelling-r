@@ -1,6 +1,11 @@
 library(tidyverse)
 library(lubridate)
 
+source("R/utils.R")
+source("R/interest_rate_models.R")
+source("R/equity_models.R")
+source("R/inflation_models.R")
+
 rates  <- read_csv("data/rates.csv")
 equity <- read_csv("data/equity.csv")
 cpi    <- read_csv("data/cpi.csv")
@@ -76,5 +81,29 @@ n <- min(length(resid_r), length(resid_eq), length(resid_pi))
 resid_matrix <- cbind(resid_r[1:n], resid_eq[1:n], resid_pi[1:n])
 
 cor_mat <- cor(resid_matrix)
+
+#################################################################################
+#IN THIS SECTION, THE 10,000 SIMULATIONS ARE RUN OVER 10 YEARS.
+
+T_years <- 10
+n_steps <- as.integer(T_years/dt)
+n_scenarios <- 10000
+
+shocks_array <- generate_correlated_normals(n_steps = n_steps, n_scenarios = n_scenarios, corr_matrix = cor_mat)
+
+eps_r <- shocks_array[ , , 1]
+eps_eq <- shocks_array[ , , 2]
+eps_pi <- shocks_array[ , , 3]
+
+r0 <- tail(data$Rate, 1)
+eq0 <- tail(data$Equity, 1)
+pi0 <- tail(data$inflation_rate, 1)
+
+r_paths <- simulate_rates(r0, a, b, sigma_r, dt, eps_r)
+eq_paths <- simulate_equity(eq0, mu_S, sigma_S, dt, eps_eq)
+pi_paths <- simulate_inflation(pi0, alpha_hat, beta_hat, sigma_pi, dt, eps_pi)
+
+
+
 
 
