@@ -1,5 +1,6 @@
 library(tidyverse)
 library(lubridate)
+library(ggplot2)
 
 source("R/utils.R")
 source("R/interest_rate_models.R")
@@ -11,7 +12,7 @@ equity <- read_csv("data/equity.csv")
 cpi    <- read_csv("data/cpi.csv")
 
 # Rename variables and transform date to a date object
-rates <- rates %>% rename(Date = observation_date, Rate = IR3TIB01EZM156N) %>% mutate(Date = as.Date(Date))
+rates <- rates %>% rename(Date = observation_date, Rate = IR3TIB01EZM156N) %>% mutate(Date = as.Date(Date), Rate = Rate/100)
 
 # Transform the dates to a Date object and select the two relevant columns fom the dataset
 equity <- equity %>% mutate(Date = mdy(Date)) %>% select(Date, Equity = Price)
@@ -103,6 +104,81 @@ r_paths <- simulate_rates(r0, a, b, sigma_r, dt, eps_r)
 eq_paths <- simulate_equity(eq0, mu_S, sigma_S, dt, eps_eq)
 pi_paths <- simulate_inflation(pi0, alpha_hat, beta_hat, sigma_pi, dt, eps_pi)
 
+
+################################################################################
+
+#COMPUTE THE DISCOUNT FACTORS FOR THE INTEREST RATES
+
+# Drop the first row from rates as this was taken from the historical data
+r_no0 <- r_paths[-1, , drop = FALSE]
+
+# r_int is the integral of the rates up to time t. As the graph behaves as a
+# step function, each running total- cumsum- can be multiplied by dt
+r_int <- apply(r_no0, 2, cumsum) * dt   
+DF    <- exp(-r_int)                    
+
+# average the discounct factors- DF- for each time step 
+time_grid <- (1:n_steps) * dt
+df_mean   <- rowMeans(DF)
+
+df_df <- tibble(
+  t       = time_grid,
+  df_mean = df_mean
+)
+
+################################################################################
+
+#CREATE PLOTS OF DATA
+
+# A PLOT OF THE FIRST 50 RATE PATHS
+
+n_show <- 50  # number of scenarios to show
+idx    <- sample(1:n_scenarios, n_show)
+
+rates_plot_df <- tibble(
+  t      = rep(0:n_steps * dt, times = n_show),
+  rate   = as.vector(r_paths[, idx]),
+  scen   = rep(paste0("scen_", 1:n_show), each = n_steps + 1)
+)
+
+ggplot(rates_plot_df, aes(x = t, y = rate, group = scen)) +
+  geom_line(alpha = 0.3) +
+  labs(title = "Sample simulated short-rate paths",
+       x = "Time (years)", y = "Short rate") +
+scale_y_continuous(labels = scales::percent_format(accuracy = 0.1))
+
+
+# A histogram of rate paths at 10 years
+
+rates_10y <- r_paths[n_steps + 1, ]
+
+tibble(r = rates_10y) %>%
+  ggplot(aes(x = r)) +
+  geom_histogram(bins = 50) +
+  labs(title = "Distribution of short rate at 10 years") +
+scale_x_continuous(labels = percent_format(accuracy = 0.1)) +
+  theme_minimal()
+
+
+# Equity Paths
+
+equity_plot_df <- tibble(
+  t    = rep(0:n_steps * dt, times = n_show),
+  S    = as.vector(eq_paths[, idx]),
+  scen = rep(paste0("scen_", 1:n_show), each = n_steps + 1)
+)
+
+ggplot(equity_plot_df, aes(x = t, y = S, group = scen)) +
+  geom_line(alpha = 0.3) +
+  labs(title = "Sample simulated equity index paths",
+       x = "Time (years)", y = "Index level")
+
+#DF Curve
+
+ggplot(df_df, aes(x = t, y = df_mean)) +
+  geom_line() +
+  labs(title = "Average discount factor curve",
+       x = "Time (years)", y = "DF(0,t)")
 
 
 
